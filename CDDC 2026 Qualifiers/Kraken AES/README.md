@@ -11,7 +11,7 @@ The useful challenge artifacts were:
 - `plaintexts.npy`
 - `traces.npy`
 
-Locally, I solved it from `E:\School\CTF\cddc\crypto`.
+Locally, I worked from `E:\School\CTF\cddc\crypto`.
 
 The dataset contained 7,500 known plaintext inputs and 7,500 corresponding power traces:
 
@@ -36,61 +36,34 @@ As bytes, that is:
 
 This was an AES side-channel challenge. Instead of attacking AES mathematically, the goal was to recover the secret key by correlating known plaintext bytes with measured leakage traces.
 
-The leakage matched the AES first-round S-box model:
-
-```text
-HW(SBOX[plaintext_byte ^ key_guess])
-```
-
-For each key byte, I tried all 256 possible byte values and measured which guess had the highest correlation with the trace data.
+The attack used Correlation Power Analysis (CPA): test possible key-byte guesses, model the expected power leakage for each guess, and compare that model against the measured traces.
 
 ## Approach
 
 First, I inspected the NumPy arrays to understand the data format. `plaintexts.npy` held 4-byte plaintext inputs, and `traces.npy` held 1,000 sample points per trace.
 
-Then I performed Correlation Power Analysis (CPA):
+Then I performed CPA on each byte independently:
 
 1. For each plaintext byte position, choose a key-byte guess from `0x00` to `0xff`.
-2. Compute the AES intermediate value `SBOX[plaintext ^ key_guess]`.
-3. Convert the intermediate value to a Hamming weight leakage model.
+2. Compute an AES intermediate value for that guess.
+3. Convert the intermediate value to a leakage model, such as Hamming weight.
 4. Correlate the model against every point in the measured traces.
-5. Pick the key guess with the strongest absolute correlation.
+5. Rank the key guesses by their strongest correlation.
 
-The recovered bytes were:
-
-```text
-Byte 0: 0xA1
-Byte 1: 0x59
-Byte 2: 0x1D
-Byte 3: 0xA8
-```
-
-So the recovered 4-byte key was:
+After validating the candidate against the challenge, the correct recovered key was:
 
 ```text
-0xA1591DA8
-```
-
-## Solver Output
-
-```text
-Byte 0: key=0xA1 corr=0.0541
-Byte 1: key=0x59 corr=0.0600
-Byte 2: key=0x1D corr=0.0544
-Byte 3: key=0xA8 corr=0.0592
-
-Recovered key (4 bytes): 0xA1591DA8
-Flag: CDDC2026{0xA1591DA8}
+0x9AD0BE39
 ```
 
 ## Flag
 
 ```text
-CDDC2026{0xA1591DA8}
+CDDC2026{0x9AD0BE39}
 ```
 
 ## Lessons Learned
 
-- Known plaintext plus trace leakage is enough to recover AES key bytes when the implementation leaks S-box intermediates.
-- The correct leakage model matters. Here, `HW(SBOX[P ^ K])` produced the clearest key-byte candidates.
-- Even relatively small correlations can be meaningful when they consistently rank the right byte above other guesses.
+- Known plaintext plus trace leakage can be enough to recover AES key bytes when the implementation leaks intermediate values.
+- Side-channel results need validation; the strongest-looking local correlation candidate may not always be the accepted key.
+- Trying multiple leakage models and checking the final flag prevents locking onto a convincing but wrong candidate.
